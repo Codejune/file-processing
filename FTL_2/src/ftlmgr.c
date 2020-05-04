@@ -44,6 +44,7 @@ void ftl_open()
 	if(flashfp == NULL) {
 		fprintf(stderr, "%s doesn't opening\n", FLASH_MEMORY);
 		return_signal = false;
+		exit(1);
 		return;
 	}
 
@@ -78,18 +79,21 @@ void ftl_read(int lsn, char *sectorbuf)
 	if(DATAPAGES_PER_DEVICE <= lsn || lsn < 0) { // lsn(lpn) 범위 초과
 		fprintf(stderr, "ftl_read: Invalid input logical sector number(0 < lsn < %d)\n", DATAPAGES_PER_DEVICE);
 		return_signal = false;
+		exit(1);
 		return;
 	}
 
 	if((ppn = mapping_table[lsn]) == null) { // mapping_table에 쓰여진 ppn이 존재하지 않음
 		fprintf(stderr, "ftl_read: Physical page number doesn't exist on mapping_table[%d]\n", lsn);
 		return_signal = false;
+		exit(1);
 		return;
 	}
 
 	if(spare_table[mapping_table[lsn]].is_invalid == true) { // flash memory에 페이지가 존재하지 않음
 		fprintf(stderr, "ftl_read: No data in flashmemory[%d]\n", ppn);
 		return_signal = false;
+		exit(1);
 		return;
 	}
 
@@ -115,6 +119,7 @@ void ftl_write(int lsn, char *sectorbuf)
 	if(DATAPAGES_PER_DEVICE <= lsn || lsn < 0) { // lsn(lpn) 범위 초과
 		fprintf(stderr, "ftl_write: Invalid input logical sector number(0 < lsn < %d)\n", DATAPAGES_PER_DEVICE);
 		return_signal = false;
+		exit(1);
 		return;
 	}
 
@@ -198,9 +203,9 @@ void ftl_print()
 {
 	int i;
 
-	printf("  lpn   ppn\n");
+	printf("lpn ppn\n");
 	for(i = 0; i < DATAPAGES_PER_DEVICE; i++)
-		printf("%5d %5d\n", i, mapping_table[i]);
+		printf("%d %d\n", i, mapping_table[i]);
 	printf("free block's pbn=%d\n", free_block);
 
 	return;
