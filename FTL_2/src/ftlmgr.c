@@ -28,6 +28,7 @@ extern int mapping_table[DATAPAGES_PER_DEVICE];
 extern SpareData spare_table[BLOCKS_PER_DEVICE * PAGES_PER_BLOCK];
 extern int erase_count[BLOCK_SIZE];
 extern int return_signal;
+extern int write_count;
 int free_block;
 
 // flash memory를 처음 사용할 때 필요한 초기화 작업, 예를 들면 address mapping table에 대한
@@ -86,7 +87,7 @@ void ftl_read(int lsn, char *sectorbuf)
 		return;
 	}
 
-	if(!(spare_table[mapping_table[lsn]].is_invalid == null)) {
+	if(spare_table[mapping_table[lsn]].is_invalid == true) { // flash memory에 페이지가 존재하지 않음
 		fprintf(stderr, "ftl_read: No data in flashmemory[%d]\n", ppn);
 		return_signal = false;
 		return;
@@ -109,7 +110,6 @@ void ftl_write(int lsn, char *sectorbuf)
 	char sparebuf[SPARE_SIZE];
 	int is_available;
 	int is_all_invalid;
-	int idx;
 	int i, j;
 
 	if(DATAPAGES_PER_DEVICE <= lsn || lsn < 0) { // lsn(lpn) 범위 초과
@@ -129,7 +129,7 @@ void ftl_write(int lsn, char *sectorbuf)
 	}
 
 	// garbage collection
-	if(is_all_invalid) {  // 빈 페이지가 존재하지 않는 경우(모든 페이지가 유효한 경우)
+	if(is_all_invalid && (write_count >= PAGES_PER_BLOCK)) {  // 빈 페이지가 존재하지 않는 경우(모든 페이지가 유효한 경우)
 		// 해당 페이지를 제외한 나머지 페이지를 빈 블록으로 복사한 뒤 업데이트, 기존 블록 삭제
 		int g_block = mapping_table[lsn] / PAGES_PER_BLOCK; // 해당 블록 인덱스
 		int g_page = g_block * PAGES_PER_BLOCK; // 해당 블록의 페이지 시작 인덱스
@@ -150,6 +150,7 @@ void ftl_write(int lsn, char *sectorbuf)
 		}
 		dd_erase(g_block);
 		free_block = g_block;
+		write_count = 0;
 	}
 
 
@@ -160,7 +161,6 @@ void ftl_write(int lsn, char *sectorbuf)
 
 		if((i / PAGES_PER_BLOCK) == free_block)
 			continue;
-
 
 		for(j = 0; j < DATAPAGES_PER_DEVICE; j++) // mapping table에 존재하는 페이지인지 확인
 			if(mapping_table[j] == i) { // mapping table에서 참조하는 페이지일 경우
@@ -174,14 +174,13 @@ void ftl_write(int lsn, char *sectorbuf)
 		if(is_available) { // 유효하지 않은 페이지인 경우
 			spare_table[i].lpn = lsn; // 해당 페이지를 참조하는 테이블 번호(lsn) 갱신
 			spare_table[i].is_invalid = false; // 유효함으로 갱신
-			if(mapping_table[lsn] > null) { // mapping table의 갱신이 필요한 경우
+			if(mapping_table[lsn] > null) // mapping table의 갱신이 필요한 경우
 				spare_table[mapping_table[lsn]].lpn = null;
-				spare_table[mapping_table[lsn]].is_invalid = true; // 기존 페이지를 유효하지 않음 변경
-			}
-			mapping_table[lsn] = i; // mapping table의 페이지 번호(psn) 갱신 ㅁ
-			printf("%d\n", i);
+			mapping_table[lsn] = i; // mapping table의 페이지 번호(psn) 갱신
+			write_count++;
 			break;
 		}
+
 	}
 
 	memset(pagebuf, (char)0xFF, PAGE_SIZE); // 버퍼 초기화

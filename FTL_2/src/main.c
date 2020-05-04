@@ -21,6 +21,7 @@ FILE *flashfp; // flash memory 파일 포인터
 int mapping_table[DATAPAGES_PER_DEVICE];
 SpareData spare_table[DATAPAGES_PER_DEVICE];
 int erase_count[BLOCK_SIZE];
+int write_count;
 int return_signal;
 
 int main(void)
@@ -37,6 +38,7 @@ int main(void)
 	}
 
 	memset(erase_count, -1, BLOCK_SIZE); // 삭제 횟수 초기화
+	write_count = 0;
 
 	ftl_open();
 
