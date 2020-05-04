@@ -175,8 +175,10 @@ void ftl_write(int lsn, char *sectorbuf)
 		if(is_available) { // 유효하지 않은 페이지인 경우
 			spare_table[i].lpn = lsn; // 해당 페이지를 참조하는 테이블 번호(lsn) 갱신
 			spare_table[i].is_invalid = false; // 유효함으로 갱신
-			if(mapping_table[lsn] > null) // mapping table의 갱신이 필요한 경우
+			if(mapping_table[lsn] > null) { // mapping table의 갱신이 필요한 경우
 				spare_table[mapping_table[lsn]].lpn = null;
+				spare_table[mapping_table[lsn]].is_invalid = true;
+			}
 			mapping_table[lsn] = i; // mapping table의 페이지 번호(psn) 갱신
 			write_count++;
 			break;
