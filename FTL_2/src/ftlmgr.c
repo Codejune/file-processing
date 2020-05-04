@@ -62,7 +62,7 @@ void ftl_open()
 		spare_table[i].lpn = null; // lpn 초기화(-1)
 		spare_table[i].is_invalid = true; // 유효값 초기화
 	}
-	
+
 	write_count = false;
 	free_block = DATABLKS_PER_DEVICE;
 	return_signal = true;
@@ -85,13 +85,6 @@ void ftl_read(int lsn, char *sectorbuf)
 
 	if((ppn = mapping_table[lsn]) == null) { // mapping_table에 쓰여진 ppn이 존재하지 않음
 		fprintf(stderr, "ftl_read: Physical page number doesn't exist on mapping_table[%d]\n", lsn);
-		return_signal = false;
-		exit(1);
-		return;
-	}
-
-	if(spare_table[mapping_table[lsn]].is_invalid == true) { // flash memory에 페이지가 존재하지 않음
-		fprintf(stderr, "ftl_read: No data in flashmemory[%d]\n", ppn);
 		return_signal = false;
 		exit(1);
 		return;
@@ -134,24 +127,27 @@ void ftl_write(int lsn, char *sectorbuf)
 	}
 
 	// garbage collection
-	if(is_all_invalid && (write_count >= PAGES_PER_BLOCK)) {  // 빈 페이지가 존재하지 않는 경우(모든 페이지가 유효한 경우)
+	if(is_all_invalid) {  // 빈 페이지가 존재하지 않는 경우(모든 페이지가 유효한 경우)
 		// 해당 페이지를 제외한 나머지 페이지를 빈 블록으로 복사한 뒤 업데이트, 기존 블록 삭제
 		int g_block = mapping_table[lsn] / PAGES_PER_BLOCK; // 해당 블록 인덱스
 		int g_page = g_block * PAGES_PER_BLOCK; // 해당 블록의 페이지 시작 인덱스
 		for(i = g_page, j = 0; i < g_page + PAGES_PER_BLOCK; i++, j++) {
+			// 빈 블록 초기화
 			spare_table[free_block * PAGES_PER_BLOCK + j].lpn = null;
 			spare_table[free_block * PAGES_PER_BLOCK + j].is_invalid = true;
-			mapping_table[spare_table[i].lpn] = null;
-			spare_table[i].lpn = null;
-			spare_table[i].is_invalid = true;
 
-			if(i != mapping_table[lsn]) { // 탐색하는 페이지가 mapping table에 존재하는 페이지일 경우
+			if(i != mapping_table[lsn]) { // 탐색하는 페이지가 mapping table에 존재하는 페이지일 경우 빈 블록에 복사
 				fseek(flashfp, PAGE_SIZE * i, SEEK_SET); // 해당 페이지 위치 이동
 				fread(pagebuf, PAGE_SIZE, 1, flashfp); // 해당 페이지 위치 읽기
 				fseek(flashfp, (BLOCK_SIZE * free_block) + (j * PAGE_SIZE), SEEK_SET); // 빈 블록에서 페이지 위치 이동 
 				fwrite(pagebuf, PAGE_SIZE, 1, flashfp); // 빈 블록에 페이지 쓰기
 				fflush(flashfp);
+				spare_table[free_block * PAGES_PER_BLOCK + j].lpn = spare_table[i].lpn;
+				spare_table[free_block * PAGES_PER_BLOCK + j].is_invalid = false;
+				mapping_table[spare_table[i].lpn] = free_block * PAGES_PER_BLOCK + j;
 			} 
+			spare_table[i].lpn = null;
+			spare_table[i].is_invalid = true;
 		}
 		dd_erase(g_block);
 		free_block = g_block;
