@@ -18,11 +18,10 @@ int dd_erase(int pbn);
 void print_usage();
 
 FILE *flashfp; // flash memory 파일 포인터
-int mapping_table[DATAPAGES_PER_DEVICE];
-SpareData spare_table[DATAPAGES_PER_DEVICE];
-int erase_count[BLOCK_SIZE];
-int write_count;
-int return_signal;
+extern int mapping_table[DATAPAGES_PER_DEVICE];
+extern SpareData spare_table[DATAPAGES_PER_DEVICE];
+extern int write_count;
+extern int return_signal;
 
 int main(void)
 {
@@ -37,9 +36,6 @@ int main(void)
 		exit(1);
 	}
 
-	memset(erase_count, -1, BLOCK_SIZE); // 삭제 횟수 초기화
-	write_count = 0;
-
 	ftl_open();
 
 	while(true) {
@@ -52,9 +48,6 @@ int main(void)
 			case 1: // ftl_open()
 
 				ftl_open();
-				for(i = 0; i < BLOCK_SIZE; i++) 
-					erase_count[i]++;
-
 				break;
 
 			case 2: // ftl_read()

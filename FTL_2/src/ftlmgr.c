@@ -24,11 +24,10 @@ int dd_write(int lsn, char *pagebuf);
 void ftl_print();
 
 extern FILE *flashfp;
-extern int mapping_table[DATAPAGES_PER_DEVICE];
-extern SpareData spare_table[BLOCKS_PER_DEVICE * PAGES_PER_BLOCK];
-extern int erase_count[BLOCK_SIZE];
-extern int return_signal;
-extern int write_count;
+int mapping_table[DATAPAGES_PER_DEVICE];
+SpareData spare_table[BLOCKS_PER_DEVICE * PAGES_PER_BLOCK];
+int return_signal;
+int write_count;
 int free_block;
 
 // flash memory를 처음 사용할 때 필요한 초기화 작업, 예를 들면 address mapping table에 대한
@@ -62,7 +61,8 @@ void ftl_open()
 		spare_table[i].lpn = null; // lpn 초기화(-1)
 		spare_table[i].is_invalid = true; // 유효값 초기화
 	}
-
+	
+	write_count = false;
 	free_block = DATABLKS_PER_DEVICE;
 	return_signal = true;
 	return;
