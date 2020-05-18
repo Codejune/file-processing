@@ -105,7 +105,7 @@ void insert(FILE *fp, const Person *p)
 
 	pack(recordbuf, p); // Packing input data to record buffer
 
-	if(header.delete_count > 0) { // Delete record is exist
+	if (header.delete_count > 0) { // Delete record is exist
 
 		fseek(fp, header.current_delete_page * PAGE_SIZE + header.current_delete_record * RECORD_SIZE + sizeof(char), SEEK_SET);
 		fread(&d_info, sizeof(struct DeleteInfo), 1, fp);
@@ -126,7 +126,7 @@ void insert(FILE *fp, const Person *p)
 		page_count = ftell(fp) / PAGE_SIZE;
 		record_idx = header.record_count % RECORD_PER_PAGE;
 
-		if(header.record_count >= (page_count - 1) * RECORD_PER_PAGE) { // Page fully
+		if (header.record_count >= (page_count - 1) * RECORD_PER_PAGE) { // Page fully
 
 			// Create new page and write page to record file
 			strncpy(pagebuf, recordbuf, strlen(recordbuf));
@@ -175,19 +175,16 @@ void delete(FILE *fp, const char *sn)
 	fseek(fp, 0, SEEK_END);
 	page_count = ftell(fp) / PAGE_SIZE;
 
-	for(int i = 1; i <= page_count; i++) { // Page index loop
+	for (int i = 1; i <= page_count; i++) { // Page index loop
 
 		readPage(fp, pagebuf, i); // Read page and copy content to page buffer
 
-		for(int j = 0; j < RECORD_PER_PAGE; j++) { // Record index loop
+		for (int j = 0; j < RECORD_PER_PAGE; j++) { // Record index loop
 
 			strncpy(recordbuf, pagebuf + j * RECORD_SIZE, RECORD_SIZE); // Read page buffer and copy content to record buffer
-			printf("%s\n", recordbuf);
 			unpack(recordbuf, &p); // Convert record buffer content to structure
 
-			if(strcmp(p.sn, sn) == 0) { // Find PERSON_ID
-
-				printf("sibal!\n");
+			if (strcmp(p.sn, sn) == 0) { // Find PERSON_ID
 
 				fseek(fp, i * PAGE_SIZE + j * RECORD_SIZE, SEEK_SET);
 				fwrite(&symbol, sizeof(char), 1, fp);
@@ -238,6 +235,11 @@ int main(int argc, char *argv[])
 		fclose(fp); // Record file close
 	}
 
+	if (argc < 3) {
+		fprintf(stderr, "invalid input\n");
+		exit(1);
+	}
+
 	// Unknown option error
 	if (strlen(argv[1]) > 2) {
 		fprintf(stderr, "option error for %s\n", argv[1]);
@@ -255,37 +257,37 @@ int main(int argc, char *argv[])
 			}
 
 			// Parse data and save to structure from the argument array
-			if(strlen(argv[3]) > 16) {
+			if (strlen(argv[3]) > 16) {
 				fprintf(stderr, "Out of bound PERSON_ID");
 				break;
 			}
 			sscanf(argv[3], "%s", p.sn);
 
-			if(strlen(argv[4]) > 20) {
+			if (strlen(argv[4]) > 20) {
 				fprintf(stderr, "Out of bound NAME");
 				break;
 			}
 			sscanf(argv[4], "%[^,\t\n]", p.name);
 
-			if(strlen(argv[5]) > 6) {
+			if (strlen(argv[5]) > 6) {
 				fprintf(stderr, "Out of bound AGE");
 				break;
 			}
 			sscanf(argv[5], "%s", p.age);
 
-			if(strlen(argv[6]) > 24) {
+			if (strlen(argv[6]) > 24) {
 				fprintf(stderr, "Out of bound ADDRESS");
 				break;
 			}
 			sscanf(argv[6], "%s", p.addr);
 
-			if(strlen(argv[7]) > 18) {
+			if (strlen(argv[7]) > 18) {
 				fprintf(stderr, "Out of bound PHONE_NUMBER");
 				break;
 			}
 			sscanf(argv[7], "%s", p.phone);
 
-			if(strlen(argv[8]) > 28) {
+			if (strlen(argv[8]) > 28) {
 				fprintf(stderr, "Out of bound EMAIL");
 				break;
 			}
