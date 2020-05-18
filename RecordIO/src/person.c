@@ -11,8 +11,8 @@
  */
 struct Header
 {
-	int record_count;
 	int delete_count;
+	int record_count;
 	int current_delete_page;
 	int current_delete_record;
 };
@@ -109,11 +109,10 @@ void insert(FILE *fp, const Person *p)
 
 		fseek(fp, header.current_delete_page * PAGE_SIZE + header.current_delete_record * RECORD_SIZE + sizeof(char), SEEK_SET);
 		fread(&d_info, sizeof(struct DeleteInfo), 1, fp);
-		printf("d_info %d %d\n", d_info.page, d_info.record);
-
 
 		readPage(fp, pagebuf, header.current_delete_page);
-		strncpy(pagebuf + header.current_delete_record * RECORD_SIZE, recordbuf, RECORD_SIZE);
+		memset(pagebuf + header.current_delete_record * RECORD_SIZE, (char)0xFF, RECORD_SIZE);
+		strncpy(pagebuf + header.current_delete_record * RECORD_SIZE, recordbuf, strlen(recordbuf));
 		writePage(fp, pagebuf, header.current_delete_page);
 
 		header.delete_count--;
@@ -166,16 +165,13 @@ void delete(FILE *fp, const char *sn)
 	char pagebuf[PAGE_SIZE];
 	char recordbuf[RECORD_SIZE];
 	int page_count;
-	char symbol;
+	char symbol = '*';
 
 	// Read header data
 	fseek(fp, 0, SEEK_SET);
 	fread(&header, sizeof(struct Header), 1, fp);
 
-	symbol = '*';
-	d_info.page = (int)header.current_delete_page;
-	d_info.record = (int)header.current_delete_record;
-
+	// Get page count
 	fseek(fp, 0, SEEK_END);
 	page_count = ftell(fp) / PAGE_SIZE;
 
@@ -186,29 +182,32 @@ void delete(FILE *fp, const char *sn)
 		for(int j = 0; j < RECORD_PER_PAGE; j++) { // Record index loop
 
 			strncpy(recordbuf, pagebuf + j * RECORD_SIZE, RECORD_SIZE); // Read page buffer and copy content to record buffer
+			printf("%s\n", recordbuf);
 			unpack(recordbuf, &p); // Convert record buffer content to structure
 
-			if(!strcmp(p.sn, sn)) { // Find PERSON_ID
-				
-				memcpy(recordbuf, &symbol, sizeof(char));
-				memcpy(recordbuf + sizeof(char), &d_info, sizeof(struct DeleteInfo)); // Convert delete information data to binary integer and write to record buffer
-				strncpy(pagebuf + j * RECORD_SIZE, recordbuf, RECORD_SIZE); // Write record buffer to page buffer
-				writePage(fp, pagebuf, i); // Write page buffer to record file
+			if(strcmp(p.sn, sn) == 0) { // Find PERSON_ID
+
+				printf("sibal!\n");
+
+				fseek(fp, i * PAGE_SIZE + j * RECORD_SIZE, SEEK_SET);
+				fwrite(&symbol, sizeof(char), 1, fp);
+				fwrite(&header.current_delete_page, sizeof(int), 1, fp);
+				fwrite(&header.current_delete_record, sizeof(int), 1, fp);
+
 				// Refresh header and delete info structure
 				header.delete_count++;
 				header.current_delete_page = i;
 				header.current_delete_record = j;
-				d_info.page = i;
-				d_info.page = j;
 
+				// Refrest header data to record file
+				memset(pagebuf, (char)0xFF, PAGE_SIZE);
+				memcpy(pagebuf, &header, sizeof(struct Header)); // Convert header data to binary integer and write to page buffer
+				writePage(fp, pagebuf, 0); // Write page buffer in record file
+
+				return;
 			}
 		}
 	}
-
-	// Refrest header data to record file
-	memset(pagebuf, (char)0xFF, PAGE_SIZE);
-	memcpy(pagebuf, &header, sizeof(struct Header)); // Convert header data to binary integer and write to page buffer
-	writePage(fp, pagebuf, 0); // Write page buffer in record file
 }
 
 /**
