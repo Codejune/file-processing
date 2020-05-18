@@ -1,72 +1,325 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 #include "person.h"
-//필요한 경우 헤더 파일과 함수를 추가할 수 있음
 
-// 과제 설명서대로 구현하는 방식은 각자 다를 수 있지만 약간의 제약을 둡니다.
-// 레코드 파일이 페이지 단위로 저장 관리되기 때문에 사용자 프로그램에서 레코드 파일로부터 데이터를 읽고 쓸 때도
-// 페이지 단위를 사용합니다. 따라서 아래의 두 함수가 필요합니다.
-// 1. readPage(): 주어진 페이지 번호의 페이지 데이터를 프로그램 상으로 읽어와서 pagebuf에 저장한다
-// 2. writePage(): 프로그램 상의 pagebuf의 데이터를 주어진 페이지 번호에 저장한다
-// 레코드 파일에서 기존의 레코드를 읽거나 새로운 레코드를 쓰거나 삭제 레코드를 수정할 때나
-// 모든 I/O는 위의 두 함수를 먼저 호출해야 합니다. 즉 페이지 단위로 읽거나 써야 합니다.
+#define RECORD_PER_PAGE (PAGE_SIZE / RECORD_SIZE)
 
-//
-// 페이지 번호에 해당하는 페이지를 주어진 페이지 버퍼에 읽어서 저장한다. 페이지 버퍼는 반드시 페이지 크기와 일치해야 한다.
-//
+/**
+ * @brief Header structure
+ */
+struct Header
+{
+	int record_count;
+	int delete_count;
+	int current_delete_page;
+	int current_delete_record;
+};
+
+/**
+ * @brief Delete information structure
+ */
+struct DeleteInfo
+{
+	int page;
+	int record;
+};
+
+/**
+ * @brief Read page from record file
+ * @param *char $pagebuf Array of char to store the read buffer
+ * @param int $pagenum Page number to read
+ */
 void readPage(FILE *fp, char *pagebuf, int pagenum)
 {
-
+	fseek(fp, PAGE_SIZE * pagenum, SEEK_SET);
+	fread(pagebuf, PAGE_SIZE, 1, fp);
 }
 
-//
-// 페이지 버퍼의 데이터를 주어진 페이지 번호에 해당하는 위치에 저장한다. 페이지 버퍼는 반드시 페이지 크기와 일치해야 한다.
-//
+/**
+ * @brief Save pagebuf in the pagenum location of the record file
+ * @param fp Record file pointer
+ * @param pagebuf Page buffer to store in record file
+ * @param pagenum Page number to store in record file
+ */
 void writePage(FILE *fp, const char *pagebuf, int pagenum)
 {
-
+	fseek(fp, PAGE_SIZE * pagenum, SEEK_SET);
+	fwrite(pagebuf, PAGE_SIZE, 1, fp);
 }
 
-//
-// 새로운 레코드를 저장할 때 터미널로부터 입력받은 정보를 Person 구조체에 먼저 저장하고, pack() 함수를 사용하여
-// 레코드 파일에 저장할 레코드 형태를 recordbuf에 만든다. 그런 후 이 레코드를 저장할 페이지를 readPage()를 통해 프로그램 상에
-// 읽어 온 후 pagebuf에 recordbuf에 저장되어 있는 레코드를 저장한다. 그 다음 writePage() 호출하여 pagebuf를 해당 페이지 번호에
-// 저장한다. pack() 함수에서 readPage()와 writePage()를 호출하는 것이 아니라 pack()을 호출하는 측에서 pack() 함수 호출 후
-// readPage()와 writePage()를 차례로 호출하여 레코드 쓰기를 완성한다는 의미이다.
-// 
+/**
+ * @brief Covert information read from structure to character array
+ * @param recordbuf An array of characters to store information read from the sturcture
+ * @param p Structure contatining information to read
+ */
 void pack(char *recordbuf, const Person *p)
 {
-
+	int remain;
+	sprintf(recordbuf, "%s#%s#%s#%s#%s#%s#", 
+			p->sn,
+			p->name,
+			p->age,
+			p->addr,
+			p->phone,
+			p->email);
+	remain = PAGE_SIZE - strlen(recordbuf) - 1;
+	memset(recordbuf + strlen(recordbuf) + 1, (char)0xFF, remain);
 }
 
-// 
-// 아래의 unpack() 함수는 recordbuf에 저장되어 있는 레코드를 구조체로 변환할 때 사용한다. 이 함수가 언제 호출되는지는
-// 위에서 설명한 pack()의 시나리오를 참조하면 된다.
-//
+/**
+ * @brief Read information from recordbuf and convert it to a structure
+ * @param recordbuf Buffer read from record file
+ * @param p structure to store the read information
+ */
 void unpack(const char *recordbuf, Person *p)
 {
-
+	sscanf(recordbuf, "%[^#]%[^#]%[^#]%[^#]%[^#]%[^#]",
+			p->sn,
+			p->name,
+			p->age,
+			p->addr,
+			p->phone,
+			p->email);
 }
 
-//
-// 새로운 레코드를 저장하는 기능을 수행하며, 터미널로부터 입력받은 필드값을 구조체에 저장한 후 아래의 insert() 함수를 호출한다.
-//
+/**
+ * @brief Write a new record to the record file
+ * @detail If the most recently deleted record exists, it is stored in that location, otherwise it is appended to the end of the record file.
+ * @param fp Record file pointer
+ * @param p structure to record data
+ */
 void insert(FILE *fp, const Person *p)
 {
+	char pagebuf[PAGE_SIZE];
+	char recordbuf[RECORD_SIZE];
+	struct Header header;
+	struct DeleteInfo d_info;
+	int page_count;
+	int record_idx;
 
+	// Read header data
+	fseek(fp, 0, SEEK_SET);
+	fread(&header, sizeof(struct Header), 1, fp);
+
+	pack(recordbuf, p); // Packing input data to record buffer
+
+	if(header.delete_count > 0) { // Delete record is exist
+
+		fseek(fp, header.current_delete_page * PAGE_SIZE + header.current_delete_record * RECORD_SIZE + sizeof(char), SEEK_SET);
+		fread(&d_info, sizeof(struct DeleteInfo), 1, fp);
+		printf("d_info %d %d\n", d_info.page, d_info.record);
+
+
+		readPage(fp, pagebuf, header.current_delete_page);
+		strncpy(pagebuf + header.current_delete_record * RECORD_SIZE, recordbuf, RECORD_SIZE);
+		writePage(fp, pagebuf, header.current_delete_page);
+
+		header.delete_count--;
+		header.current_delete_page = d_info.page;
+		header.current_delete_record = d_info.record;
+
+	} else { // Delete record doesn't exist
+
+		// Get page count
+		fseek(fp, 0, SEEK_END);
+		page_count = ftell(fp) / PAGE_SIZE;
+		record_idx = header.record_count % RECORD_PER_PAGE;
+
+		if(header.record_count >= (page_count - 1) * RECORD_PER_PAGE) { // Page fully
+
+			// Create new page and write page to record file
+			strncpy(pagebuf, recordbuf, strlen(recordbuf));
+			memset(pagebuf + RECORD_SIZE, (char)0xFF, PAGE_SIZE - RECORD_SIZE);
+			writePage(fp, pagebuf, page_count);
+
+		} else { // Page doesn't fully
+
+			readPage(fp, pagebuf, page_count - 1);
+			memset(pagebuf + record_idx * RECORD_SIZE, (char)0xFF, RECORD_SIZE);
+			strncpy(pagebuf + record_idx * RECORD_SIZE, recordbuf, strlen(recordbuf));
+			writePage(fp, pagebuf, page_count - 1);
+
+		}
+
+		header.record_count++;
+	}
+
+
+	// Refrest header data to record file
+	memset(pagebuf, (char)0xFF, PAGE_SIZE);
+	memcpy(pagebuf, &header, sizeof(struct Header)); // Convert header data to binary integer and write to page buffer
+	writePage(fp, pagebuf, 0); // Write page buffer in record file
 }
 
-//
-// 주민번호와 일치하는 레코드를 찾아서 삭제하는 기능을 수행한다.
-//
+/**
+ * @breif Find PERSON_ID data exist in record file and delete the record
+ * @param fp Record file pointer
+ * @param sn PERSON_ID
+ */
 void delete(FILE *fp, const char *sn)
 {
+	Person p;
+	struct Header header;
+	struct DeleteInfo d_info;
+	char pagebuf[PAGE_SIZE];
+	char recordbuf[RECORD_SIZE];
+	int page_count;
+	char symbol;
 
+	// Read header data
+	fseek(fp, 0, SEEK_SET);
+	fread(&header, sizeof(struct Header), 1, fp);
+
+	symbol = '*';
+	d_info.page = (int)header.current_delete_page;
+	d_info.record = (int)header.current_delete_record;
+
+	fseek(fp, 0, SEEK_END);
+	page_count = ftell(fp) / PAGE_SIZE;
+
+	for(int i = 1; i <= page_count; i++) { // Page index loop
+
+		readPage(fp, pagebuf, i); // Read page and copy content to page buffer
+
+		for(int j = 0; j < RECORD_PER_PAGE; j++) { // Record index loop
+
+			strncpy(recordbuf, pagebuf + j * RECORD_SIZE, RECORD_SIZE); // Read page buffer and copy content to record buffer
+			unpack(recordbuf, &p); // Convert record buffer content to structure
+
+			if(!strcmp(p.sn, sn)) { // Find PERSON_ID
+				
+				memcpy(recordbuf, &symbol, sizeof(char));
+				memcpy(recordbuf + sizeof(char), &d_info, sizeof(struct DeleteInfo)); // Convert delete information data to binary integer and write to record buffer
+				strncpy(pagebuf + j * RECORD_SIZE, recordbuf, RECORD_SIZE); // Write record buffer to page buffer
+				writePage(fp, pagebuf, i); // Write page buffer to record file
+				// Refresh header and delete info structure
+				header.delete_count++;
+				header.current_delete_page = i;
+				header.current_delete_record = j;
+				d_info.page = i;
+				d_info.page = j;
+
+			}
+		}
+	}
+
+	// Refrest header data to record file
+	memset(pagebuf, (char)0xFF, PAGE_SIZE);
+	memcpy(pagebuf, &header, sizeof(struct Header)); // Convert header data to binary integer and write to page buffer
+	writePage(fp, pagebuf, 0); // Write page buffer in record file
 }
 
+/**
+ * @brief Record IO main function
+ * @param argc Argument count
+ * @param argv Argument string array
+ */
 int main(int argc, char *argv[])
 {
-	FILE *fp;  // 레코드 파일의 파일 포인터
+	FILE *fp; // Record file pointer
+	char pagebuf[PAGE_SIZE] = { 0 }; // Page buffer
+	struct Header header; // Header data structure
+	Person p; // Record data structure
+	int remain;
 
+	// Access error for record file
+	if (access(argv[2], F_OK) < 0) {
+		fp = fopen(argv[2], "w+"); // Record file creation and open
+		// Initialize header structure
+		header.record_count = 0;
+		header.delete_count = 0;
+		header.current_delete_page = -1;
+		header.current_delete_record = -1;
+		// Make header page buffer
+		memset(pagebuf, (char)0xFF, PAGE_SIZE);
+		memcpy(pagebuf, &header, sizeof(struct Header)); // Convert header data to binary integer and write to page buffer
+		writePage(fp, pagebuf, 0); // Write page buffer in record file
+		fclose(fp); // Record file close
+	}
 
-	return 1;
+	// Unknown option error
+	if (strlen(argv[1]) > 2) {
+		fprintf(stderr, "option error for %s\n", argv[1]);
+		exit(1);
+	}
+
+	switch (argv[1][0]) {
+
+		case 'i': // Insert option
+
+			// Argument count error
+			if (argc < 8) {
+				fprintf(stderr, "Usage: %s i <FILE_NAME> <PERSION_ID> <NAME> <AGE> <ADDRESS> <PHONE_NUMBER> <EMAIL>\n", argv[0]);
+				exit(1);
+			}
+
+			// Parse data and save to structure from the argument array
+			if(strlen(argv[3]) > 16) {
+				fprintf(stderr, "Out of bound PERSON_ID");
+				break;
+			}
+			sscanf(argv[3], "%s", p.sn);
+
+			if(strlen(argv[4]) > 20) {
+				fprintf(stderr, "Out of bound NAME");
+				break;
+			}
+			sscanf(argv[4], "%[^,\t\n]", p.name);
+
+			if(strlen(argv[5]) > 6) {
+				fprintf(stderr, "Out of bound AGE");
+				break;
+			}
+			sscanf(argv[5], "%s", p.age);
+
+			if(strlen(argv[6]) > 24) {
+				fprintf(stderr, "Out of bound ADDRESS");
+				break;
+			}
+			sscanf(argv[6], "%s", p.addr);
+
+			if(strlen(argv[7]) > 18) {
+				fprintf(stderr, "Out of bound PHONE_NUMBER");
+				break;
+			}
+			sscanf(argv[7], "%s", p.phone);
+
+			if(strlen(argv[8]) > 28) {
+				fprintf(stderr, "Out of bound EMAIL");
+				break;
+			}
+			sscanf(argv[8], "%s", p.email);
+
+			// Open record file
+			if ((fp = fopen(argv[2], "r+")) < 0) {
+				fprintf(stderr, "fopen error for %s\n", argv[2]);
+				exit(1);
+			}
+
+			// Insert to record file
+			insert(fp, &p);
+			fclose(fp);
+			break;
+
+		case 'd': // Delete option
+
+			// Open record file
+			if ((fp = fopen(argv[2], "r+")) < 0) {
+				fprintf(stderr, "fopen error for %s\n", argv[2]);
+				exit(1);
+			}
+			sscanf(argv[3], "%s", p.sn); // Parse data and save to structure from the argument array
+
+			// Delete record from record file
+			delete(fp, p.sn);	
+			break;
+
+		default: // Unknown option
+
+			fprintf(stderr, "Unknown option\n");
+			break;
+	}
+	exit(0);
 }
