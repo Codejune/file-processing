@@ -11,7 +11,7 @@
  */
 struct Header
 {
-	int delete_count;
+	int page_count;
 	int record_count;
 	int current_delete_page;
 	int current_delete_record;
@@ -96,7 +96,6 @@ void insert(FILE *fp, const Person *p)
 	char recordbuf[RECORD_SIZE];
 	struct Header header;
 	struct DeleteInfo d_info;
-	int page_count;
 	int record_idx;
 
 	// Read header data
@@ -105,7 +104,7 @@ void insert(FILE *fp, const Person *p)
 
 	pack(recordbuf, p); // Packing input data to record buffer
 
-	if (header.delete_count > 0) { // Delete record is exist
+	if ((header.current_delete_page != -1) && (header.current_delete_record != -1)) { // Delete record is exist
 
 		fseek(fp, header.current_delete_page * PAGE_SIZE + header.current_delete_record * RECORD_SIZE + sizeof(char), SEEK_SET);
 		fread(&d_info, sizeof(struct DeleteInfo), 1, fp);
@@ -115,7 +114,6 @@ void insert(FILE *fp, const Person *p)
 		strncpy(pagebuf + header.current_delete_record * RECORD_SIZE, recordbuf, strlen(recordbuf));
 		writePage(fp, pagebuf, header.current_delete_page);
 
-		header.delete_count--;
 		header.current_delete_page = d_info.page;
 		header.current_delete_record = d_info.record;
 
@@ -123,25 +121,26 @@ void insert(FILE *fp, const Person *p)
 
 		// Get page count
 		fseek(fp, 0, SEEK_END);
-		page_count = ftell(fp) / PAGE_SIZE;
 		record_idx = header.record_count % RECORD_PER_PAGE;
 
-		if (header.record_count >= (page_count - 1) * RECORD_PER_PAGE) { // Page fully
+		if (record_idx == 0) { // Page fully
+
+			printf("full!\n");
 
 			// Create new page and write page to record file
 			strncpy(pagebuf, recordbuf, strlen(recordbuf));
 			memset(pagebuf + RECORD_SIZE, (char)0xFF, PAGE_SIZE - RECORD_SIZE);
-			writePage(fp, pagebuf, page_count);
+			writePage(fp, pagebuf, header.page_count++);
 
 		} else { // Page doesn't fully
 
-			readPage(fp, pagebuf, page_count - 1);
+			printf("doesn't full!\n");
+			readPage(fp, pagebuf, header.page_count - 1);
 			memset(pagebuf + record_idx * RECORD_SIZE, (char)0xFF, RECORD_SIZE);
 			strncpy(pagebuf + record_idx * RECORD_SIZE, recordbuf, strlen(recordbuf));
-			writePage(fp, pagebuf, page_count - 1);
+			writePage(fp, pagebuf, header.page_count - 1);
 
 		}
-
 		header.record_count++;
 	}
 
@@ -192,7 +191,7 @@ void delete(FILE *fp, const char *sn)
 				fwrite(&header.current_delete_record, sizeof(int), 1, fp);
 
 				// Refresh header and delete info structure
-				header.delete_count++;
+				header.record_count--;
 				header.current_delete_page = i;
 				header.current_delete_record = j;
 
@@ -224,8 +223,8 @@ int main(int argc, char *argv[])
 	if (access(argv[2], F_OK) < 0) {
 		fp = fopen(argv[2], "w+"); // Record file creation and open
 		// Initialize header structure
+		header.page_count = 1;
 		header.record_count = 0;
-		header.delete_count = 0;
 		header.current_delete_page = -1;
 		header.current_delete_record = -1;
 		// Make header page buffer
