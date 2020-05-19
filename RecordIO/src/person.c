@@ -155,6 +155,7 @@ void delete(FILE *fp, const char *sn)
 	struct Header header;
 	char pagebuf[PAGE_SIZE];
 	char recordbuf[RECORD_SIZE];
+	char deletebuf[sizeof(char) + sizeof(int) + sizeof(int)];
 	char symbol = '*';
 
 	// Read header data
@@ -167,11 +168,7 @@ void delete(FILE *fp, const char *sn)
 
 		for (int j = 0; j < RECORD_PER_PAGE; j++) { // Record index loop
 
-			strncpy(recordbuf, pagebuf + j * RECORD_SIZE, RECORD_SIZE); // Read page buffer and copy content to record buffer
-
-			if(recordbuf[0] == '*')
-				continue;
-
+			memcpy(recordbuf, pagebuf + j * RECORD_SIZE, RECORD_SIZE);
 			unpack(recordbuf, &p); // Convert record buffer content to structure
 
 			if (strcmp(p.sn, sn) == 0) { // Find PERSON_ID
@@ -180,11 +177,11 @@ void delete(FILE *fp, const char *sn)
 				memcpy(recordbuf, &symbol, sizeof(char)); // Write symbol to record buffer     
 				memcpy(recordbuf + sizeof(char), &header.current_delete_page, sizeof(int)); // Write previous delete page number to record buffer
 				memcpy(recordbuf + sizeof(char) + sizeof(int), &header.current_delete_record, sizeof(int)); // Write previous delete record number to record buffer
-				strncpy(pagebuf + j * RECORD_SIZE, recordbuf, RECORD_SIZE); // Write record buffer to page buffer
+				memcpy(pagebuf + j * RECORD_SIZE, recordbuf, RECORD_SIZE);
+				//strncpy(pagebuf + j * RECORD_SIZE, recordbuf, RECORD_SIZE); // Write record buffer to page buffer
 				writePage(fp, pagebuf, i); // Write page buffer to record file
 
 				// Refresh header and delete info structure
-				header.record_count--;
 				header.current_delete_page = i;
 				header.current_delete_record = j;
 
