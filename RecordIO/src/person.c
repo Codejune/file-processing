@@ -101,8 +101,8 @@ void insert(FILE *fp, const Person *p)
 		readPage(fp, pagebuf, header.current_delete_page);
 
 		// Parse previous delete page number and record number
-		memcpy(&previous_delete_page, pagebuf + sizeof(char), sizeof(int));
-		memcpy(&previous_delete_record, pagebuf + sizeof(char) + sizeof(int), sizeof(int));
+		memcpy(&previous_delete_page, pagebuf + header.current_delete_record * RECORD_SIZE + sizeof(char), sizeof(int));
+		memcpy(&previous_delete_record, pagebuf + header.current_delete_record * RECORD_SIZE + sizeof(char) + sizeof(int), sizeof(int));
 
 		// Write data to pagebuf
 		memset(pagebuf + header.current_delete_record * RECORD_SIZE, (char)0xFF, RECORD_SIZE);
